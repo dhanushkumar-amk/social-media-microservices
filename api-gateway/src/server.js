@@ -8,6 +8,9 @@ const { RedisStore } = require('rate-limit-redis')
 const logger = require('./utils/logger')
 const proxy = require('express-http-proxy')
 const errorHandler = require('./middleware/errorHandler')
+const { validateToken } = require('./middleware/auth-midlleware')
+
+
 
 const app = express();
 const PORT = process.env.PORT || 3000
@@ -63,7 +66,7 @@ const proxyOptions = {
     }
 };
 
-// seeting up proxy for our identity service
+// setting up proxy for our identity service
 app.use('/v1/auth', proxy(process.env.IDENTITY_SERVICE_URL, {
     ...proxyOptions,
     proxyReqOptDecorator : (proxyReqOpts, srcReq) => {  // request headers used by multiple headers
@@ -76,6 +79,20 @@ app.use('/v1/auth', proxy(process.env.IDENTITY_SERVICE_URL, {
     }
 }));
 
+// setting up proxy for our post service
+app.use('/v1/post', validateToken ,proxy(process.env.POST_SERVICE_URL,{
+    ...proxyOptions,
+     proxyReqOptDecorator : (proxyReqOpts, srcReq) => {  // request headers used by multiple headers
+        proxyReqOpts.headers['Content-Type'] = "application/json"
+        proxyReqOpts.headers['x-user-id'] = srcReq.user.userId; // for post controller in cretePost
+        return proxyReqOpts
+    },
+     userResDecorator : (proxyRes, proxyResData, userReq, userRes) => {
+        logger.info(`Response received from post service: ${proxyRes.statusCode} `)
+        return proxyResData
+    }
+}))
+
 // error handler middleware
 app.use(errorHandler)
 
@@ -83,5 +100,6 @@ app.use(errorHandler)
 app.listen(PORT, () => {
     logger.info(`API Gateway is running on PORT : ${PORT}`)
     logger.info(`Identity service is running on PORT : ${process.env.IDENTITY_SERVICE_URL}`)
+    logger.info(`post service is running on PORT : ${process.env.POST_SERVICE_URL}`)
     logger.info(`Redis Url is running on PORT : ${process.env.REDIS_URL}`)
 })
