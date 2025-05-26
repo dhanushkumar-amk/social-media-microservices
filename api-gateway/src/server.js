@@ -1,0 +1,87 @@
+const dotenv = require('dotenv').config()
+const express = require('express')
+const cors = require('cors')
+const Redis = require('ioredis')
+const helmet = require('helmet')
+const { rateLimit } = require('express-rate-limit')
+const { RedisStore } = require('rate-limit-redis')
+const logger = require('./utils/logger')
+const proxy = require('express-http-proxy')
+const errorHandler = require('./middleware/errorHandler')
+
+const app = express();
+const PORT = process.env.PORT || 3000
+
+// redis client creation
+const redisClient = new Redis(process.env.REDIS_URL);
+
+// midllewares
+app.use(helmet())
+app.use(cors())
+app.use(express.json())
+
+
+// ip based rate limiting for sensitive endpoints middleware
+const RateLimit = rateLimit({
+    windowMs : 15 * 60 * 1000, // time
+    max : 100, // request
+    standardHeaders : true, // say the rate limter includes the response headers or not
+    legacyHeaders : false,
+    handler : (req, res) => {
+        logger.warn(`Sensitive endpoint rate limit exceeded for IP : ${req.ip}`)
+         res.status(429).json({
+            success : false,
+            message : "Too many request..."
+        })
+    },
+    store : new RedisStore({
+        sendCommand : (...args) => redisClient.call(...args),
+    }),
+})
+app.use(RateLimit);
+
+// logging purpose middleware only for logging
+app.use((req, res, next) => {
+    logger.info(`Received ${req.method} request  to ${req.url}`)
+    logger.info(`Request body, ${req.body}`)
+    next();
+})
+
+ // localhost:3000/v1/auth/register ======> localhost:3001/api/auth/register
+
+//  main proxy for converting v1 to api
+const proxyOptions = {
+    proxyReqPathResolver: (req) => {
+        return req.originalUrl.replace(/^\/v1/, "/api"); // replace v1 => api
+    },
+    proxyErrorHandler: (err, res, next) => {
+        logger.error(`Proxy error : ${err.message}`);
+        res.status(500).json({
+            message: "internal server error",
+            error: err.message
+        });
+    }
+};
+
+// seeting up proxy for our identity service
+app.use('/v1/auth', proxy(process.env.IDENTITY_SERVICE_URL, {
+    ...proxyOptions,
+    proxyReqOptDecorator : (proxyReqOpts, srcReq) => {  // request headers used by multiple headers
+        proxyReqOpts.headers['Content-Type'] = "application/json"
+        return proxyReqOpts
+    },
+    userResDecorator : (proxyRes, proxyResData, userReq, userRes) => {
+        logger.info(`Response received from identity service: ${proxyRes.statusCode} `)
+        return proxyResData
+    }
+}));
+
+// error handler middleware
+app.use(errorHandler)
+
+
+app.listen(PORT, () => {
+    logger.info(`API Gateway is running on PORT : ${PORT}`)
+    logger.info(`Identity service is running on PORT : ${process.env.IDENTITY_SERVICE_URL}`)
+    logger.info(`Redis Url is running on PORT : ${process.env.REDIS_URL}`)
+})
