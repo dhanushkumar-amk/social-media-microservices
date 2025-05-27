@@ -10,6 +10,7 @@ const errorHandler = require('./middleware/errorHandler')
 const connectDB = require('./config/db')
 const logger = require('./utils/logger');
 const  post  = require('./routes/post-routes');
+const { connectToRabbitMq } = require('./utils/rabitmq');
 
 
 const app = express();
@@ -43,6 +44,16 @@ app.use('/api/post', (req, res, next) =>{
 //error handlers
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+async function startServer() {
+    try {
+        await connectToRabbitMq();
+        app.listen(PORT, () => {
     logger.info(`Post service running on port : ${PORT}` )
-})
+    })
+    } catch (error) {
+        logger.error("Failed to connect to server", error)
+        process.exit(1);
+    }
+}
+
+startServer();
