@@ -84,7 +84,7 @@ app.use('/v1/post', validateToken ,proxy(process.env.POST_SERVICE_URL,{
     ...proxyOptions,
      proxyReqOptDecorator : (proxyReqOpts, srcReq) => {  // request headers used by multiple headers
         proxyReqOpts.headers['Content-Type'] = "application/json"
-        proxyReqOpts.headers['x-user-id'] = srcReq.user.userId; // for post controller in cretePost
+        proxyReqOpts.headers['x-user-id'] = srcReq.user.us+erId; // for post controller in cretePost
         return proxyReqOpts
     },
      userResDecorator : (proxyRes, proxyResData, userReq, userRes) => {
