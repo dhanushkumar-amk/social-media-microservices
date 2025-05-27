@@ -115,6 +115,20 @@ app.use('/v1/media', validateToken, proxy(process.env.MEDIA_SERVICE_URL, {
   parseReqBody: false
 }));
 
+ // setting up proxy for our search service
+app.use('/v1/search', validateToken ,proxy(process.env.SEARCH_SERVICE_URL,{
+    ...proxyOptions,
+     proxyReqOptDecorator : (proxyReqOpts, srcReq) => {  // request headers used by multiple headers
+        proxyReqOpts.headers['Content-Type'] = "application/json"
+        proxyReqOpts.headers['x-user-id'] = srcReq.user.userId; // for post controller in cretePost
+        return proxyReqOpts
+    },
+     userResDecorator : (proxyRes, proxyResData, userReq, userRes) => {
+        logger.info(`Response received from search service: ${proxyRes.statusCode} `)
+        return proxyResData
+    }
+}))
+
 
 // error handler middleware
 app.use(errorHandler)
@@ -125,5 +139,6 @@ app.listen(PORT, () => {
     logger.info(`Identity service is running on PORT : ${process.env.IDENTITY_SERVICE_URL}`)
     logger.info(`post service is running on PORT : ${process.env.POST_SERVICE_URL}`)
     logger.info(`media service is running on PORT : ${process.env.MEDIA_SERVICE_URL}`)
+    logger.info(`search service is running on PORT : ${process.env.SEARCH_SERVICE_URL}`)
     logger.info(`Redis Url is running on PORT : ${process.env.REDIS_URL}`)
 })
